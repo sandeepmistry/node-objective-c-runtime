@@ -144,7 +144,11 @@ void callbackExecutor(uv_async_t* handle) {
     if (strcmp("@", argumentType) == 0) {
       id arg = va_arg(callbackValist, id);
 
-      napi_create_buffer_copy(env, sizeof(arg), &arg, NULL, &argv[i]);
+      if (arg == nil) {
+        napi_get_null(env, &argv[i]);
+      } else {
+        napi_create_buffer_copy(env, sizeof(arg), &arg, NULL, &argv[i]);
+      }
     } else {
       napi_fatal_error("callbackExecutor", [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String]);
       return;

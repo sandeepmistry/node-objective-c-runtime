@@ -275,7 +275,9 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
     id returnValue;
     [invocation getReturnValue:&returnValue];
 
-    if (returnValue != nil) {
+    if (returnValue == nil) {
+      napi_get_null(env, &result);
+    } else {
       napi_create_buffer_copy(env, sizeof(returnValue), &returnValue, NULL, &result);
     }
   } else if (strcmp("q", methodReturnType) == 0 || strcmp("Q", methodReturnType) == 0) {
