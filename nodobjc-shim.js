@@ -92,7 +92,8 @@ function createClassWrapper(id) {
         try {
           impl.apply(impl, applyArgs);
         } catch (e) {
-          console.log(e);
+          console.error(e);
+          process.exit(-1);
         }
       }, types);
     }
