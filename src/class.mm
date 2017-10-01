@@ -164,6 +164,11 @@ void callbackExecutor(uv_async_t* handle) {
   napi_make_callback(env, cb, cb, numberOfArguments, argv, &result);
 
   napi_close_handle_scope(env, scope);
+
+  if (handle != NULL) {
+    uv_close((uv_handle_t*)handle, NULL);
+  }
+
   uv_sem_post(&returnValueSemaphore);
 }
 
@@ -180,6 +185,7 @@ id methodWrapper(id self, SEL cmd, ...) {
     // already on the main thread, call the callback
     callbackExecutor(NULL);
   } else {
+    uv_async_init(uv_default_loop(), &callbackHandle, callbackExecutor);
     uv_async_send(&callbackHandle);
     uv_sem_wait(&returnValueSemaphore);
   }
@@ -283,7 +289,6 @@ void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
   assert(status == napi_ok);
 
   mainThread = uv_thread_self();
-  uv_async_init(uv_default_loop(), &callbackHandle, callbackExecutor);
   uv_mutex_init(&methodWrapperMutex);
   uv_sem_init(&returnValueSemaphore, 0);
 }
