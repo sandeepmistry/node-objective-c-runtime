@@ -141,6 +141,10 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
   id self;
   memcpy(&self, selfData, sizeof(self));
 
+  if (self == nil) {
+    return nullptr;
+  }
+
   void* opData;
   size_t opLength;
   napi_get_buffer_info(env, args[1], &opData, &opLength);
@@ -198,7 +202,7 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
       napi_get_value_string_utf8(env, vargs[i], str, strlen + 1, &strlen);
 
       [invocation setArgument:&str atIndex:i];
-    } else if (strcmp("Q", argumentType) == 0 || strcmp("i", argumentType) == 0) {
+    } else if (strcmp("q", argumentType) == 0 || strcmp("Q", argumentType) == 0 || strcmp("i", argumentType) == 0) {
       if (valuetype != napi_number) {
         napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Expected argument %lu to be a number!", (i + 1)] UTF8String]);
         return nullptr;
@@ -260,7 +264,7 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
 
   napi_value result = nullptr;
 
-  if (strcmp("v", methodReturnType) == 0) {
+  if (strcmp("v", methodReturnType) == 0 || strcmp("Vv", methodReturnType) == 0) {
     return nullptr;
   } else if (strcmp("r*", methodReturnType) == 0) {
     const char* returnValue;
@@ -297,6 +301,27 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
   return result;
 }
 
+napi_value GetClassList(napi_env env, napi_callback_info info) {
+  napi_value result;
+
+  int numClasses = objc_getClassList(NULL, 0);
+  napi_create_array_with_length(env, numClasses, &result);
+
+  Class classes[numClasses];
+  numClasses = objc_getClassList(classes, numClasses);
+
+  for (int i = 0; i < numClasses; i++) {
+    const char* className = class_getName(classes[i]);
+
+    napi_value value;
+    napi_create_string_utf8(env, className, -1, &value);
+
+    napi_set_element(env, result, i, value);
+  }
+
+  return result;
+}
+
 #define DECLARE_NAPI_METHOD(name, func)                          \
   { name, 0, func, 0, 0, 0, napi_default, 0 }
 
@@ -306,11 +331,13 @@ void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
   napi_property_descriptor getClass = DECLARE_NAPI_METHOD("getClass", GetClass);
   napi_property_descriptor allocateClassPair = DECLARE_NAPI_METHOD("allocateClassPair", AllocateClassPair);
   napi_property_descriptor msgSend = DECLARE_NAPI_METHOD("msgSend", MsgSend);
+  napi_property_descriptor getClassList = DECLARE_NAPI_METHOD("getClassList", GetClassList);
 
   const napi_property_descriptor properties[] = {
     getClass,
     allocateClassPair,
-    msgSend
+    msgSend,
+    getClassList
   };
 
   status = napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
