@@ -146,13 +146,13 @@ void callbackExecutor(uv_async_t* handle) {
 
       napi_create_buffer_copy(env, sizeof(arg), &arg, NULL, &argv[i]);
     } else {
-      napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String]);
+      napi_fatal_error("callbackExecutor", [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String]);
       return;
     }
   }
 
   if (strcmp("v", methodReturnType) != 0) {
-    napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Unsupported return type type '%s'!", methodReturnType] UTF8String]);
+    napi_fatal_error("callbackExecutor", [[NSString stringWithFormat:@"Unsupported return type type '%s'!", methodReturnType] UTF8String]);
     return;
   }
 
