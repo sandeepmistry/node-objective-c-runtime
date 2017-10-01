@@ -161,7 +161,7 @@ void callbackExecutor(uv_async_t* handle) {
   }
 
   napi_value result;
-  napi_call_function(env, cb, cb, numberOfArguments, argv, &result);
+  napi_make_callback(env, cb, cb, numberOfArguments, argv, &result);
 
   napi_close_handle_scope(env, scope);
   uv_sem_post(&returnValueSemaphore);
