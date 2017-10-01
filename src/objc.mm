@@ -271,7 +271,7 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
     [invocation getReturnValue:&returnValue];
 
     napi_create_string_utf8(env, returnValue, -1, &result);
-  } else if (strcmp("@", methodReturnType) == 0) {
+  } else if (strcmp("@", methodReturnType) == 0 || strcmp("#", methodReturnType) == 0) {
     id returnValue;
     [invocation getReturnValue:&returnValue];
 
