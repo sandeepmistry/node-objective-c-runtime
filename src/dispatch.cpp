@@ -49,7 +49,7 @@ napi_value QueueCreate(napi_env env, napi_callback_info info) {
   }
 
   napi_value result;
-  napi_create_int64(env, (int64_t)q, &result);
+  napi_create_buffer_copy(env, sizeof(q), &q, NULL, &result);
 
   return result;
 }

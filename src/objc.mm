@@ -34,14 +34,14 @@ napi_value GetClass(napi_env env, napi_callback_info info) {
   char name[namelen + 1];
   napi_get_value_string_utf8(env, args[0], name, sizeof(name), &namelen);
 
-  Class c = objc_getClass(name);
+  Class cls = objc_getClass(name);
 
-  if (c == NULL) {
+  if (cls == NULL) {
     return nullptr;
   }
 
   napi_value result;
-  napi_create_int64(env, (int64_t)c, &result);
+  napi_create_buffer_copy(env, sizeof(cls), &cls, NULL, &result);
 
   return result;
 }
@@ -58,11 +58,11 @@ napi_value AllocateClassPair(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_valuetype valuetype0;
-  napi_typeof(env, args[0], &valuetype0);
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
 
-  if (valuetype0 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'superclass' argument to be a number!");
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'superclass' argument to be a buffer!");
     return nullptr;
   }
 
@@ -82,27 +82,29 @@ napi_value AllocateClassPair(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
+  void* superclassData;
+  size_t superclassLength;
+  napi_get_buffer_info(env, args[0], &superclassData, &superclassLength);
+
   Class superclass;
-  napi_get_value_int64(env, args[0], (int64_t*)&superclass);
+  memcpy(&superclass, superclassData, sizeof(superclass));
 
   size_t namelen = 0;
-  napi_get_value_string_utf8(env, args[0], NULL, 0, &namelen);
+  napi_get_value_string_utf8(env, args[1], NULL, 0, &namelen);
 
   char name[namelen + 1];
-  napi_get_value_string_utf8(env, args[0], name, sizeof(name), &namelen);
+  napi_get_value_string_utf8(env, args[1], name, sizeof(name), &namelen);
 
   size_t extraBytes = 0;
   napi_get_value_int64(env, args[2], (int64_t*)&extraBytes);
 
-  Class c = objc_allocateClassPair(superclass, name, extraBytes);
+  Class cls = objc_allocateClassPair(superclass, name, extraBytes);
 
   napi_value result;
-  napi_create_int64(env, (int64_t)c, &result);
+  napi_create_buffer_copy(env, sizeof(cls), &cls, NULL, &result);
 
   return result;
 }
-
-#include <dispatch/dispatch.h>
 
 // id objc_msgSend(id self, SEL op, ...)
 napi_value MsgSend(napi_env env, napi_callback_info info) {
@@ -116,27 +118,35 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_valuetype valuetype0;
-  napi_typeof(env, args[0], &valuetype0);
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
 
-  if (valuetype0 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'self' argument to be a number!");
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'self' argument to be a buffer!");
     return nullptr;
   }
 
-  napi_valuetype valuetype1;
-  napi_typeof(env, args[1], &valuetype1);
+  bool valuetype1isbuffer = false;
+  napi_is_buffer(env, args[1], &valuetype1isbuffer);
 
-  if (valuetype1 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'op' argument to be a number!");
+  if (!valuetype1isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'op' argument to be a buffer!");
     return nullptr;
   }
+
+  void* selfData;
+  size_t selfLength;
+  napi_get_buffer_info(env, args[0], &selfData, &selfLength);
 
   id self;
-  napi_get_value_int64(env, args[0], (int64_t*)&self);
+  memcpy(&self, selfData, sizeof(self));
+
+  void* opData;
+  size_t opLength;
+  napi_get_buffer_info(env, args[1], &opData, &opLength);
 
   SEL op;
-  napi_get_value_int64(env, args[1], (int64_t*)&op);
+  memcpy(&op, opData, sizeof(op));
 
   Method method = object_isClass(self) ? class_getClassMethod(self, op) : class_getInstanceMethod([self class], op);
 
@@ -172,29 +182,58 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
     napi_valuetype valuetype;
     napi_typeof(env, vargs[i], &valuetype);
 
+    bool valueisbuffer = false;
+    napi_is_buffer(env, vargs[i], &valueisbuffer);
+
     if (strcmp("r*", argumentType) == 0) {
-      if (valuetype1 != napi_string) {
+      if (valuetype != napi_string) {
         napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Expected argument %lu to be a string!", (i + 1)] UTF8String]);
         return nullptr;
       }
 
       size_t strlen = 0;
-      strlen = (size_t)napi_get_value_string_utf8(env, vargs[i], NULL, 0, &strlen);
+      napi_get_value_string_utf8(env, vargs[i], NULL, 0, &strlen);
 
-      char* str = (char*)malloc(strlen);
-      napi_get_value_string_utf8(env, vargs[i], str, strlen, &strlen);
+      char* str = (char*)malloc(strlen + 1);
+      napi_get_value_string_utf8(env, vargs[i], str, strlen + 1, &strlen);
 
       [invocation setArgument:&str atIndex:i];
-    } else if (strcmp("Q", argumentType) == 0 || strcmp("@", argumentType) == 0) {
-      if (valuetype1 != napi_number) {
+    } else if (strcmp("Q", argumentType) == 0 || strcmp("i", argumentType) == 0) {
+      if (valuetype != napi_number) {
         napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Expected argument %lu to be a number!", (i + 1)] UTF8String]);
         return nullptr;
       }
 
-      int64_t num = 0;
+      int64_t num;
       napi_get_value_int64(env, vargs[i], &num);
 
       [invocation setArgument:&num atIndex: i];
+    } else if (strcmp("c", argumentType) == 0) {
+      if (valuetype != napi_boolean) {
+        napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Expected argument %lu to be a boolean!", (i + 1)] UTF8String]);
+        return nullptr;
+      }
+
+      bool b;
+      napi_get_value_bool(env, vargs[i], &b);
+
+      [invocation setArgument:&b atIndex: i];
+    } else if (strcmp("@", argumentType) == 0) {
+      if (!valueisbuffer && valuetype != napi_null) {
+        napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Expected argument %lu to be a buffer!", (i + 1)] UTF8String]);
+        return nullptr;
+      }
+
+      id obj = nil;
+
+      if (valuetype != napi_null) {
+        void* objData;
+        size_t objLength;
+        napi_get_buffer_info(env, vargs[i], &objData, &objLength);
+        memcpy(&obj, objData, sizeof(obj));
+      }
+
+      [invocation setArgument:&obj atIndex: i];
     } else {
       // TODO: other types from: https://developer.apple.com/library/content/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtTypeEncodings.html#//apple_ref/doc/uid/TP40008048-CH100
 
@@ -223,11 +262,33 @@ napi_value MsgSend(napi_env env, napi_callback_info info) {
 
   if (strcmp("v", methodReturnType) == 0) {
     return nullptr;
-  } else if (strcmp("@", methodReturnType) == 0 || strcmp("q", methodReturnType) == 0) {
+  } else if (strcmp("r*", methodReturnType) == 0) {
+    const char* returnValue;
+    [invocation getReturnValue:&returnValue];
+
+    napi_create_string_utf8(env, returnValue, -1, &result);
+  } else if (strcmp("@", methodReturnType) == 0) {
     id returnValue;
     [invocation getReturnValue:&returnValue];
 
-    napi_create_int64(env, (int64_t)returnValue, &result);
+    if (returnValue != nil) {
+      napi_create_buffer_copy(env, sizeof(returnValue), &returnValue, NULL, &result);
+    }
+  } else if (strcmp("q", methodReturnType) == 0 || strcmp("Q", methodReturnType) == 0) {
+    int64_t returnValue;
+    [invocation getReturnValue:&returnValue];
+
+    napi_create_int64(env, returnValue, &result);
+  } else if (strcmp("i", methodReturnType) == 0) {
+    int returnValue;
+    [invocation getReturnValue:&returnValue];
+
+    napi_create_int64(env, returnValue, &result);
+  } else if (strcmp("c", methodReturnType) == 0) {
+    bool returnValue;
+    [invocation getReturnValue:&returnValue];
+
+    napi_get_boolean(env, returnValue, &result);
   } else {
     napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Unsupported return type '%s'!", methodReturnType] UTF8String]);
     return nullptr;

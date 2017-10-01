@@ -14,12 +14,13 @@
 
 static uv_thread_t mainThread;
 static uv_async_t  callbackHandle;
+
+static id          callbackSelf;
+static SEL         callbackCmd;
+static va_list     callbackValist;
+
 static uv_mutex_t  methodWrapperMutex;
 static uv_sem_t    returnValueSemaphore;
-static size_t      callbackArgc;
-static napi_ref*   callbackArgvRef;
-static napi_env    callbackEnv;
-static napi_ref    callbackRef;
 
 static std::map<std::pair<Class, SEL>, std::tuple<napi_env, napi_ref>> callbacks;
 
@@ -35,16 +36,20 @@ napi_value GetName(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_valuetype valuetype0;
-  napi_typeof(env, args[0], &valuetype0);
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
 
-  if (valuetype0 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a number!");
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a buffer!");
     return nullptr;
   }
 
+  void* clsData;
+  size_t clsLength;
+  napi_get_buffer_info(env, args[0], &clsData, &clsLength);
+
   Class cls;
-  napi_get_value_int64(env, args[0], (int64_t*)&cls);
+  memcpy(&cls, clsData, sizeof(cls));
 
   const char* name = class_getName(cls);
 
@@ -66,29 +71,37 @@ napi_value GetClassMethod(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_valuetype valuetype0;
-  napi_typeof(env, args[0], &valuetype0);
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
 
-  if (valuetype0 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a number!");
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a buffer!");
     return nullptr;
   }
 
-  napi_valuetype valuetype1;
-  napi_typeof(env, args[1], &valuetype1);
+  bool valuetype1isbuffer = false;
+  napi_is_buffer(env, args[1], &valuetype1isbuffer);
 
-  if (valuetype1 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'name' argument to be a number!");
+  if (!valuetype1isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'name' argument to be a buffer!");
     return nullptr;
   }
+
+  void* clsData;
+  size_t clsLength;
+  napi_get_buffer_info(env, args[0], &clsData, &clsLength);
 
   Class cls;
-  napi_get_value_int64(env, args[0], (int64_t*)&cls);
+  memcpy(&cls, clsData, sizeof(cls));
 
-  SEL sel;
-  napi_get_value_int64(env, args[1], (int64_t*)&sel);
+  void* nameData;
+  size_t nameLength;
+  napi_get_buffer_info(env, args[1], &nameData, &nameLength);
 
-  Method method = class_getClassMethod(cls, sel);
+  SEL name;
+  memcpy(&name, nameData, sizeof(name));
+
+  Method method = class_getClassMethod(cls, name);
 
   if (method == NULL) {
     return nullptr;
@@ -101,36 +114,20 @@ napi_value GetClassMethod(napi_env env, napi_callback_info info) {
 }
 
 void callbackExecutor(uv_async_t* handle) {
-  napi_handle_scope scope;
-  napi_open_handle_scope(callbackEnv, &scope);
-
-  napi_value cb;
-  napi_get_reference_value(callbackEnv, callbackRef, &cb);
-
-  napi_value argv[callbackArgc];
-  for (size_t i = 0; i < callbackArgc; i++) {
-    napi_get_reference_value(callbackEnv, callbackArgvRef[i], &argv[i]);
-  }
-
-
-  napi_value result;
-  napi_call_function(callbackEnv, cb, cb, callbackArgc, argv, &result);
-
-  uv_sem_post(&returnValueSemaphore);
-}
-
-id methodWrapper(id self, SEL cmd, ...) {
-  Class cls = [self class];
+  Class cls = [callbackSelf class];
 
   napi_env env;
   napi_ref cbref;
 
-  std::tie (env, cbref) = callbacks[std::make_pair(cls, cmd)];
+  std::tie (env, cbref) = callbacks[std::make_pair(cls, callbackCmd)];
+
+  napi_handle_scope scope;
+  napi_open_handle_scope(env, &scope);
 
   napi_value cb;
   napi_get_reference_value(env, cbref, &cb);
 
-  Method method = class_getInstanceMethod(cls, cmd);
+  Method method = class_getInstanceMethod(cls, callbackCmd);
   const char* methodEncoding = method_getTypeEncoding(method);
   NSMethodSignature* methodSignature = [NSMethodSignature signatureWithObjCTypes:methodEncoding];
   size_t numberOfArguments = methodSignature.numberOfArguments;
@@ -138,60 +135,53 @@ id methodWrapper(id self, SEL cmd, ...) {
 
   napi_value argv[numberOfArguments];
 
-  napi_create_int64(env, (int64_t)self, &argv[0]);
-  napi_create_int64(env, (int64_t)cmd, &argv[1]);
-
-  va_list valist;
-  va_start(valist, cmd);
+  napi_create_buffer_copy(env, sizeof(callbackSelf), &callbackSelf, NULL, &argv[0]);
+  napi_create_buffer_copy(env, sizeof(callbackCmd), &callbackCmd, NULL, &argv[1]);
 
   for (size_t i = 2; i < numberOfArguments; i++) {
     const char* argumentType = [methodSignature getArgumentTypeAtIndex:i];
 
     if (strcmp("@", argumentType) == 0) {
-      id arg = va_arg(valist, id);
+      id arg = va_arg(callbackValist, id);
 
-      napi_create_int64(env, (int64_t)arg, &argv[i]);
+      napi_create_buffer_copy(env, sizeof(arg), &arg, NULL, &argv[i]);
     } else {
       napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String]);
+      return;
     }
   }
 
-  va_end(valist);
-
   if (strcmp("v", methodReturnType) != 0) {
     napi_throw_type_error(env, NULL, [[NSString stringWithFormat:@"Unsupported return type type '%s'!", methodReturnType] UTF8String]);
+    return;
   }
+
+  napi_value result;
+  napi_call_function(env, cb, cb, numberOfArguments, argv, &result);
+
+  napi_close_handle_scope(env, scope);
+  uv_sem_post(&returnValueSemaphore);
+}
+
+id methodWrapper(id self, SEL cmd, ...) {
+  uv_mutex_lock(&methodWrapperMutex);
+
+  callbackSelf = self;
+  callbackCmd = cmd;
+  va_start(callbackValist, cmd);
 
   uv_thread_t currentThread = uv_thread_self();
 
   if (uv_thread_equal(&mainThread, &currentThread)) {
     // already on the main thread, call the callback
-
-    napi_value result;
-    napi_call_function(env, cb, cb, numberOfArguments, argv, &result);
+    callbackExecutor(NULL);
   } else {
-    uv_mutex_lock(&methodWrapperMutex);
-
-    napi_ref argvRef[numberOfArguments];
-
-    for (size_t i = 0; i < numberOfArguments; i++) {
-      napi_create_reference(env, argv[i], 1, &argvRef[i]);
-    }
-
-    callbackArgc = numberOfArguments;
-    callbackArgvRef = argvRef;
-    callbackEnv = env;
-    callbackRef = cbref;
-
     uv_async_send(&callbackHandle);
     uv_sem_wait(&returnValueSemaphore);
-
-    for (size_t i = 0; i < numberOfArguments; i++) {
-      napi_delete_reference(env, argvRef[i]);
-    }
-
-    uv_mutex_unlock(&methodWrapperMutex);
   }
+
+  va_end(callbackValist);
+  uv_mutex_unlock(&methodWrapperMutex);
 
   return nil;
 }
@@ -208,19 +198,19 @@ napi_value AddMethod(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  napi_valuetype valuetype0;
-  napi_typeof(env, args[0], &valuetype0);
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
 
-  if (valuetype0 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a number!");
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a buffer!");
     return nullptr;
   }
 
-  napi_valuetype valuetype1;
-  napi_typeof(env, args[1], &valuetype1);
+  bool valuetype1isbuffer = false;
+  napi_is_buffer(env, args[1], &valuetype1isbuffer);
 
-  if (valuetype1 != napi_number) {
-    napi_throw_type_error(env, NULL, "Expected 'name' argument to be a number!");
+  if (!valuetype1isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'name' argument to be a buffer!");
     return nullptr;
   }
 
@@ -232,11 +222,19 @@ napi_value AddMethod(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
+  void* clsData;
+  size_t clsLength;
+  napi_get_buffer_info(env, args[0], &clsData, &clsLength);
+
   Class cls;
-  napi_get_value_int64(env, args[0], (int64_t*)&cls);
+  memcpy(&cls, clsData, sizeof(cls));
+
+  void* nameData;
+  size_t nameLength;
+  napi_get_buffer_info(env, args[1], &nameData, &nameLength);
 
   SEL name;
-  napi_get_value_int64(env, args[1], (int64_t*)&name);
+  memcpy(&name, nameData, sizeof(name));
 
   napi_value cb = args[2];
 
