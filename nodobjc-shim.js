@@ -96,7 +96,11 @@ function createClassWrapper(id) {
           process.exit(-1);
         }
       }, types);
-    }
+    };
+
+    wrapper.register = function() {
+      ocr.objc.registerClassPair(id);
+    };
 
     return wrapper;
   })(id);
@@ -115,10 +119,14 @@ function createIdWrapper(id) {
       return wrapper('description')('UTF8String');
     };
 
+    wrapper.inspect = function() {
+      return this.toString();
+    };
+
     return wrapper;
   })(id);
 }
 
-shim.import = importFramework;
+shim.import = shim.framework = shim.importFramework = importFramework;
 
 module.exports = shim;

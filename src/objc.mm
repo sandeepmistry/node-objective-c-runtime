@@ -324,6 +324,38 @@ napi_value GetClassList(napi_env env, napi_callback_info info) {
   return result;
 }
 
+// void objc_registerClassPair(Class cls);
+napi_value RegisterClassPair(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1];
+
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+  if (argc < 1) {
+    napi_throw_type_error(env, NULL, "Expected 'cls' argument!");
+    return nullptr;
+  }
+
+  bool valuetype0isbuffer = false;
+  napi_is_buffer(env, args[0], &valuetype0isbuffer);
+
+  if (!valuetype0isbuffer) {
+    napi_throw_type_error(env, NULL, "Expected 'cls' argument to be a buffer!");
+    return nullptr;
+  }
+
+  void* clsData;
+  size_t clsLength;
+  napi_get_buffer_info(env, args[0], &clsData, &clsLength);
+
+  Class cls;
+  memcpy(&cls, clsData, sizeof(cls));
+
+  objc_registerClassPair(cls);
+
+  return nullptr;
+}
+
 #define DECLARE_NAPI_METHOD(name, func)                          \
   { name, 0, func, 0, 0, 0, napi_default, 0 }
 
@@ -334,12 +366,14 @@ void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
   napi_property_descriptor allocateClassPair = DECLARE_NAPI_METHOD("allocateClassPair", AllocateClassPair);
   napi_property_descriptor msgSend = DECLARE_NAPI_METHOD("msgSend", MsgSend);
   napi_property_descriptor getClassList = DECLARE_NAPI_METHOD("getClassList", GetClassList);
+  napi_property_descriptor registerClassPair = DECLARE_NAPI_METHOD("registerClassPair", RegisterClassPair);
 
   const napi_property_descriptor properties[] = {
     getClass,
     allocateClassPair,
     msgSend,
-    getClassList
+    getClassList,
+    registerClassPair
   };
 
   status = napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
