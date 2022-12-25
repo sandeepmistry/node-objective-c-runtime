@@ -4,7 +4,9 @@
   "description": "Use the Objective-C Runtime from Node.js",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "build": "node-gyp rebuild",
+    "clean": "node-gyp clean"
   },
   "repository": {
     "type": "git",
@@ -23,10 +25,10 @@
   },
   "homepage": "https://github.com/sandeepmistry/node-objective-c-runtime",
   "dependencies": {
-    "bindings": "^1.3.0",
-    "node-addon-api": "^0.6.3"
+    "bindings": "^1.5.0",
+    "node-addon-api": "^5.0.0"
   },
   "devDependencies": {
-    "node-gyp": "^3.6.2"
+    "node-gyp": "^9.3.1"
   }
 }

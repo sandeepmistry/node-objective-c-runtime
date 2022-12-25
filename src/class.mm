@@ -10,7 +10,7 @@
 
 #include <uv.h>
 
-#include "napi.h"
+#include <napi.h>
 
 static uv_thread_t mainThread;
 static uv_async_t  callbackHandle;
@@ -150,18 +150,18 @@ void callbackExecutor(uv_async_t* handle) {
         napi_create_buffer_copy(env, sizeof(arg), &arg, NULL, &argv[i]);
       }
     } else {
-      napi_fatal_error("callbackExecutor", [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String]);
+      napi_fatal_error("callbackExecutor", NAPI_AUTO_LENGTH, [[NSString stringWithFormat:@"Unsupported argument type '%s'!", argumentType] UTF8String], NAPI_AUTO_LENGTH);
       return;
     }
   }
 
   if (strcmp("v", methodReturnType) != 0) {
-    napi_fatal_error("callbackExecutor", [[NSString stringWithFormat:@"Unsupported return type type '%s'!", methodReturnType] UTF8String]);
+    napi_fatal_error("callbackExecutor", NAPI_AUTO_LENGTH, [[NSString stringWithFormat:@"Unsupported return type type '%s'!", methodReturnType] UTF8String], NAPI_AUTO_LENGTH);
     return;
   }
 
   napi_value result;
-  napi_make_callback(env, cb, cb, numberOfArguments, argv, &result);
+  napi_make_callback(env, NULL, cb, cb, numberOfArguments, argv, &result);
 
   napi_close_handle_scope(env, scope);
 
@@ -254,7 +254,7 @@ napi_value AddMethod(napi_env env, napi_callback_info info) {
   char types[typeslen + 1];
   napi_get_value_string_utf8(env, args[3], types, sizeof(types), &typeslen);
 
-  BOOL added = class_addMethod(cls, name, methodWrapper, types);
+  BOOL added = class_addMethod(cls, name, (IMP)methodWrapper, types);
 
   if (added) {
     napi_ref cbref;
@@ -272,7 +272,7 @@ napi_value AddMethod(napi_env env, napi_callback_info info) {
 #define DECLARE_NAPI_METHOD(name, func)                          \
   { name, 0, func, 0, 0, 0, napi_default, 0 }
 
-void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
+napi_value__* Init(napi_env env, napi_value exports) {
   napi_status status;
 
   napi_property_descriptor getName = DECLARE_NAPI_METHOD("getName", GetName);
