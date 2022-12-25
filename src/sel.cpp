@@ -3,7 +3,7 @@
 
 #include <objc/runtime.h>
 
-#include "napi.h"
+#include <napi.h>
 
 // SEL sel_registerName(const char *str)
 napi_value RegisterName(napi_env env, napi_callback_info info) {
@@ -46,7 +46,7 @@ napi_value RegisterName(napi_env env, napi_callback_info info) {
 #define DECLARE_NAPI_METHOD(name, func)                          \
   { name, 0, func, 0, 0, 0, napi_default, 0 }
 
-void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
+napi_value__* Init(napi_env env, napi_value exports) {
   napi_status status;
 
   napi_property_descriptor registerName = DECLARE_NAPI_METHOD("registerName", RegisterName);

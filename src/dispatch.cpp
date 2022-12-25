@@ -3,7 +3,7 @@
 
 #include <dispatch/dispatch.h>
 
-#include "napi.h"
+#include <napi.h>
 
 // dispatch_queue_t dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
 napi_value QueueCreate(napi_env env, napi_callback_info info) {
@@ -57,7 +57,7 @@ napi_value QueueCreate(napi_env env, napi_callback_info info) {
 #define DECLARE_NAPI_METHOD(name, func)                          \
   { name, 0, func, 0, 0, 0, napi_default, 0 }
 
-void Init(napi_env env, napi_value exports, napi_value module, void* priv) {
+napi_value__* Init(napi_env env, napi_value exports) {
   napi_status status;
 
   napi_property_descriptor queueCreate = DECLARE_NAPI_METHOD("queue_create", QueueCreate);
